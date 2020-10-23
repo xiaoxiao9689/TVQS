@@ -15,7 +15,7 @@ def unpack_args(func):
         else:
             return func(*args)
     return wrapper
-
+#try
 N = 4
 beta = 0.3
 h = 0.5
