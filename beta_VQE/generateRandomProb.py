@@ -24,7 +24,6 @@ def generateRandomProb(probs,stats=3000):
     pSimus = np.zeros(psize)
     randomPs = np.random.rand(lenp1,stats)
     for idxp in range(lenp1):
-        print ('idxp', idxp)
         probs0 = np.hstack([0.0,probs[idxp,:]])
         psLims = np.zeros([lenp2,2])
         for idx in range(lenp2):
@@ -34,6 +33,17 @@ def generateRandomProb(probs,stats=3000):
     if single:
         pSimus = pSimus[0]
     return pSimus
+
+
+def generateRandomProb_s(probs, stats = 3000):
+    pSimus = np.zeros(len(probs))
+    psum = np.hstack((0, np.cumsum(probs)))
+    randomPs = np.random.rand(stats)
+    for i in range(len(probs)):
+        pSimus[i] = np.sum((randomPs > psum[i]) & (randomPs <= psum[i+1]))/stats
+    return pSimus
+
+
     
 def getFidMatrix(fids,returnInv=True):
     fidMatrix = np.array([[1]])
@@ -49,3 +59,5 @@ def getFidMatrix(fids,returnInv=True):
     else:
         return fidMatrix    
 measurefids = np.array([0.97, 0.91] *10)  ### Here, the actual fidelities of 10 qubits during the measurement need to be used.
+
+# %%

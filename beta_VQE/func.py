@@ -2,6 +2,7 @@
 
 import numpy as np
 from error_gate import *
+from util import *
 from scipy.linalg import expm
 import scipy.optimize
 from functools import partial
@@ -9,26 +10,15 @@ from functools import partial
 import os
 from zoopt import Dimension, Objective, Parameter, Opt, Solution, ExpOpt
 from gpso import minimize
+from  generateRandomProb import generateRandomProb_s
+import config
 
-###General gate#####
 
-si = np.array([[1., 0.],
-               [0., 1.]])
-
-sx = np.array([[0., 1.],
-               [1., 0.]])
-
-sy = np.array([[0., -1.j],
-               [1.j, 0.]]) 
-
-sz = np.array([[1., 0.],    
-               [0., -1.]])
-
+###two bit XY gate error parameter###
 Len_theta = 0.05
 Len_phi = 0.05
 
 ERROR_XY_LIST = []
-
 for i in range(6):
     Dtheta = (np.random.rand()-0.5)/0.5*Len_theta
     Dphim = np.sqrt(Len_phi**2 - (Len_phi*Dtheta)**2/Len_theta**2)
@@ -36,6 +26,26 @@ for i in range(6):
     ERROR_XY_LIST.append((Dtheta, Dphi))
 
 print("ERROR_XY_LIST: ", ERROR_XY_LIST)
+
+
+#Global  variable
+N = config.N
+Id = tensorl([si for i in range(N)])
+Totbasis = gen_btsl(N)
+
+Xylist = [arb_twoXXgate(i, i+1, N)+arb_twoYYgate(i, i+1, N) for i in range(N-1)]
+XY = np.sum(Xylist,axis=0)
+
+FCXY = np.zeros((2**N, 2**N), dtype = np.complex128)
+for i in range(N-1):
+    for j in range(i+1,N):
+        FCXY += arb_twoXXgate(i,j,N)+arb_twoYYgate(i,j,N)
+
+BasisBlock, BasisBlockInd = get_sym_basis(Totbasis)
+
+Basez = get_baseglobalz(N)
+Basezz = get_baseglobalzz(N)
+
 
 def cnot(control):
     if control == 0:
@@ -50,24 +60,6 @@ def cnot(control):
                           [0, 1, 0, 0]])
 
 
-### For state vector#####
-spin = [np.array([1., 0.]), np.array([0., 1.])]
-
-def gen_btsl(N):
-    # btsl = [[0], [1]]
-    # for i in range(N-1):
-    #     btsn = []
-    #     for bts in btsl:
-    #         btsn.append(bts + [1])
-    #         bts += [0]
-    #     btsl.extend(btsn)
-
-    # btsl = np.array(btsl)
-
-    basisN = int(2**N)
-    btsl = [get_basis(ind, N) for ind in range(basisN)]
-    return btsl
-
 def jointprob(btsl, phi):
     prob = []
     for x in btsl:
@@ -77,31 +69,9 @@ def jointprob(btsl, phi):
     return np.array(prob)
 
 
-####Extend N-qubit gate###
-
-
-def Id(N):
-    return tensorl([si for i in range(N)])
-
-
 ######variational gate########
 def sq_gate(para, noise):
     return np.dot(rz(para[2], noise), np.dot(ry(para[1], noise), rz(para[0], noise)))
-
-def arb_twoXXgate(i,j,N):
-    oplist = [si for n in range(N)]
-    oplist[i], oplist[j] = sx, sx
-    return tensorl(oplist)
-
-def arb_twoYYgate(i,j,N):
-    oplist = [si for n in range(N)]
-    oplist[i], oplist[j] = sy, sy
-    return tensorl(oplist)
-
-def arb_twoZZgate(i,j,N):
-    oplist = [si for n in range(N)]
-    oplist[i], oplist[j] = sz, sz
-    return tensorl(oplist)
 
             
 def enhan_XYgate(para, noise, dthedphi=None):
@@ -112,7 +82,7 @@ def enhan_XYgate(para, noise, dthedphi=None):
     
     return en_XY
 
-def singlelayer(para, N, singlegate, noise):
+def singlelayer(para, N, singlegate, noise, qN = None):
     gatel = []
     if singlegate == "X":
         gatel = [rx(para[i], noise) for i in range(N)]
@@ -120,23 +90,25 @@ def singlelayer(para, N, singlegate, noise):
         gatel = [ry(para[i], noise) for i in range(N)]
     elif singlegate == "Z":
         gatel = [rz(para[i], noise) for i in range(N)]
+    
+    singlelayer = tensorl(gatel)
+    if not (qN == None):
+        singlelayer = get_block(singlelayer, qN, BasisBlockInd)
+    return singlelayer  
 
-    return tensorl(gatel)  
-
-def chain_XY(theta, N, noise, dthedphi=None):
-    xylist = [arb_twoXXgate(i, i+1, N)+arb_twoYYgate(i, i+1, N) for i in range(N-1)]
-    xy = np.sum(xylist,axis=0)
+def chain_XY(theta, N, noise, qN = None):
+    xy = XY
+    if not (qN == None):
+        xy = get_block(XY, qN, BasisBlockInd)
     
     return expm(-1j*theta*xy)
 
-def fc_XY(theta, N, noise, dthedphi=None):
-    d = 2**N
-    xy = np.zeros((d,d), dtype = np.complex128)
-    for i in range(N-1):
-        for j in range(i+1,N):
-            xy += arb_twoXXgate(i,j,N)+arb_twoYYgate(i,j,N)
+def fc_XY(theta, N, noise, qN = None):
+    fcxy = FCXY
+    if not (qN == None):
+        fcxy = get_block(FCXY, qN, BasisBlockInd)
 
-    return  expm(-1j*theta*xy)
+    return  expm(-1j*theta*fcxy)
 
 
 def XYgate_grad(para, a, b, noise, dthedphi=None):
@@ -151,14 +123,15 @@ def XYgate_grad(para, a, b, noise, dthedphi=None):
     return XY_grad
 
 
-def get_U(thetal, layer_number, N, gate, noise):    
-    I = Id(N)
+def get_U(thetal, layer_number, N, gate, noise, qN = None):
+    if noise and (not qN == None):
+        print("Warning: Currently symmetry block must be used without noise!")
+        
     if gate == "XY":
         theta = thetal.reshape((layer_number, N-1, 4))
-
-        U = I
+        U = 1.0
         for l in range(theta.shape[0]): # layer
-            Ul = I
+            Ul = 1.0
             for i in range(theta.shape[1]):
                 oplist = [si for n in range(N-1)] 
                 oplist[i] = enhan_XYgate(theta[l, i, :], noise, dthedphi=ERROR_XY_LIST[i])
@@ -168,20 +141,18 @@ def get_U(thetal, layer_number, N, gate, noise):
         
     elif gate == "chainXY":
         theta = thetal.reshape((layer_number, N+1))
-
-        U = I
+        U = 1.0
         for l in range(theta.shape[0]):
-            Ul = singlelayer(theta[l, :N], N, "Z", noise)
-            Ul = np.dot(chain_XY(theta[l, N], N, noise, dthedphi=None), Ul)
+            Ul = singlelayer(theta[l, :N], N, "Z", noise, qN = qN)
+            Ul = np.dot(chain_XY(theta[l, N], N, noise, qN = qN), Ul)
             U = np.dot(Ul, U)
 
     elif gate == "fcXY":
         theta = thetal.reshape((layer_number, N+1))
-
-        U = I
+        U = 1.0
         for l in range(theta.shape[0]):
-            Ul = singlelayer(theta[l, :N], N, "Z", noise)
-            Ul = np.dot(fc_XY(theta[l, N], N, noise, dthedphi=None), Ul)
+            Ul = singlelayer(theta[l, :N], N, "Z", noise, qN = qN)
+            Ul = np.dot(fc_XY(theta[l, N], N, noise, qN = qN), Ul)
             U = np.dot(Ul, U)
 
     return U
@@ -190,11 +161,10 @@ def get_U_grad(thetal, layer_number, N, gate, gi, a, b, noise):
     theta = thetal.reshape((layer_number, N-1, 4))
     layer_ind = gi//((N-1)*4)
     bit_ind = gi//4%(N-1)
-    I = Id(N)
 
-    U = I
+    U = Id
     for l in range(theta.shape[0]):
-        Ul = I
+        Ul = Id
         for i in range(theta.shape[1]):
             oplist = [si for n in range(N-1)]
             if (l == layer_ind) and (i == bit_ind):
@@ -207,9 +177,6 @@ def get_U_grad(thetal, layer_number, N, gate, gi, a, b, noise):
         U = np.dot(Ul, U)
 
     return U
-
-
-
 
 
 
@@ -249,31 +216,39 @@ def gen_samples(phi, nbatch, N):
 def logp(phi, x):
     return np.sum(x*np.log(phi)+(1-x)*np.log(1-phi))
 
-def q_expect(U, x,  beta, H):
+def q_expect(Ul, x,  beta, H):
+    #Ul is list contain all qN block
+    qN = np.sum(x)
+    U = Ul[qN]
     psi = tensorl([spin[int(i)] for i in x])
+    psi = get_block(psi, qN, BasisBlockInd)
+    H = get_block(H, qN, BasisBlockInd)
     psi = np.dot(U, psi)
 
     return beta*np.real(np.dot(np.conj(psi).T, np.dot(H, psi))/np.dot(np.conj(psi).T, psi))
 
-def q_expect_exp(U, x, beta, h, basez, basezz, noise):
-    #XY
+
+def q_expect_exp(U, x, beta, h,  noise):
     ###prepare measue
     psi = tensorl([spin[int(i)] for i in x])
     N = int(np.log2(len(psi)))
     ##Using total operator####
     psi = np.dot(U, psi)
     prob = np.abs(psi)**2
-    ez = np.dot(prob, basez)/np.sum(prob)
+    prob = generateRandomProb_s(prob, stats = 10000)
+    ez = np.dot(prob, Basez)/np.sum(prob)
 
     psix = np.dot(tensorl([ry(np.pi/2, noise) for i in range(N)]), psi)
     prob = np.abs(psix)**2
+    prob = generateRandomProb_s(prob, stats = 10000)
     
-    exx = np.dot(prob, basezz)/np.sum(prob)
+    exx = np.dot(prob, Basezz)/np.sum(prob)
 
     psiy = np.dot(tensorl([rx(np.pi/2, noise) for i in range(N)]), psi)
     prob = np.abs(psiy)**2
-    eyy = np.dot(prob, basezz)/np.sum(prob)
+    prob = generateRandomProb_s(prob, stats = 10000)
 
+    eyy = np.dot(prob, Basezz)/np.sum(prob)
 
     H = -h*ez-exx-eyy
     return beta*H
@@ -285,30 +260,32 @@ def q_expect_exp(U, x, beta, h, basez, basezz, noise):
     # psi = np.dot(U, psi)
     # psix = np.dot(tensorl([ry(np.pi/2, False) for i in range(N)]), psi)
     # prob = np.abs(psix)**2
-    # ex = np.dot(prob, basez)
+    # ex = np.dot(prob, Basez)
 
     # prob = np.abs(psi)**2
-    # ezz = np.dot(prob, basezz)
+    # ezz = np.dot(prob, Basezz)
 
     # H = -h*ex-ezz
 
     #return beta*H 
 
 
-def loss_quantum(thetal, alpha, samples, beta, H, N, layer_number, noise=False,  gate="XY", samp=False, join=False):
-    h = 0.5
-    basez = get_baseglobalz(N)
-    basezz = get_baseglobalzz(N)
-
+def loss_quantum(thetal, alpha, samples, beta, H, N, layer_number, h = 0.5,  noise=False,  gate="XY", samp=False, join=False, symmetry = True):
+    
     if join:
         phi = np.exp(alpha)/np.sum(np.exp(alpha))
     else:
         phi = 1/(1+np.exp(-alpha))
     
-    U = get_U(thetal, layer_number, N, gate, noise)
-    q_expectl = [q_expect_exp(U, x, beta, h, basez, basezz, noise) for x in samples]
 
-    #q_expectl = [q_expect(U, x, beta, H) for x in samples]
+    if symmetry:
+        Ul = []
+        for n in range(N+1):
+            Ul.append(get_U(thetal, layer_number, N, gate, noise, qN = n))
+        q_expectl = [q_expect(Ul, x, beta, H) for x in samples]
+    else:
+        U = get_U(thetal, layer_number, N, gate, noise)
+        q_expectl = [q_expect_exp(U, x, beta, h, noise) for x in samples]
 
     if samp: # Using samp
         return np.mean(q_expectl)
@@ -320,11 +297,7 @@ def loss_quantum(thetal, alpha, samples, beta, H, N, layer_number, noise=False, 
             return np.dot(prob, q_expectl)
 
 
-def loss_quantum_grad(thetal, alpha, samples, beta, H, N, layer_number,  gi, a, b, noise=False, gate="XY", samp=False, join=False):
-
-    h = 0.5
-    basez = get_baseglobalz(N)
-    basezz = get_baseglobalzz(N)
+def loss_quantum_grad(thetal, alpha, samples, beta, H, N, layer_number,  gi, a, b, h = 0.5, noise=False, gate="XY", samp=False, join=False):
 
     if join:
         phi = np.exp(alpha)/np.sum(np.exp(alpha))
@@ -333,7 +306,7 @@ def loss_quantum_grad(thetal, alpha, samples, beta, H, N, layer_number,  gi, a, 
     
     U = get_U_grad(thetal, layer_number, N, gate, gi, a, b, noise)
     #q_expectl = [q_expect(U, x, beta, H) for x in samples]
-    q_expectl = [q_expect_exp(U, x, beta, h, basez, basezz, noise) for x in samples]
+    q_expectl = [q_expect_exp(U, x, beta, h, noise) for x in samples]
 
     if samp: # Using samp
         return np.mean(q_expectl)
@@ -346,11 +319,7 @@ def loss_quantum_grad(thetal, alpha, samples, beta, H, N, layer_number,  gi, a, 
     
 
 
-def loss_func(para, samples, beta, H, N, layer_number, noise=False, gate="XY", samp=False, join=False):
-    h = 0.5
-    basez = get_baseglobalz(N)
-    basezz = get_baseglobalzz(N)
-
+def loss_func(para, samples, beta, H, N, layer_number, h = 0.5,  noise=False, gate="XY", samp=False, join=False, symmetry = True):
     
     #phi = para[:N]
     if join:
@@ -363,20 +332,24 @@ def loss_func(para, samples, beta, H, N, layer_number, noise=False, gate="XY", s
     else:
         phi = 1/(1+np.exp(-para[:N]))
         thetal = para[N:]
-        U = get_U(thetal, layer_number, N, gate, noise)
-        #loss_samp = [logp(phi, x) + q_expect(U, x, beta, H) for x in samples]
-        loss_samp = [logp(phi, x) + q_expect_exp(U, x, beta, h, basez, basezz, noise) for x in samples]
+
+        if symmetry:
+            Ul = []
+            for n in range(N+1):
+                Ul.append(get_U(thetal, layer_number, N, gate, noise, qN = n))
+            loss_samp = [logp(phi, x) + q_expect(Ul, x, beta, H) for x in samples]
+
+        else:
+            U = get_U(thetal, layer_number, N, gate, noise)
+            loss_samp = [logp(phi, x) + q_expect_exp(U, x, beta, h, noise) for x in samples]
+
         if samp:
             return np.mean(loss_samp)
         else:
             prob = jointprob(samples, phi)
             return np.dot(prob, loss_samp) 
  
-def loss_func_bound(para, samples, beta, H, N, layer_number, gate="XY",  noise=False, samp=False, join=False):
-    h = 0.5
-    basez = get_baseglobalz(N)
-    basezz = get_baseglobalzz(N)
-
+def loss_func_bound(para, samples, beta, H, N, layer_number, h = 0.5,  gate="XY",  noise=False, samp=False, join=False, symmetry = True):
     if join:
         phi = np.exp(para[:int(2**N)])/np.sum(np.exp(para[:int(2**N)]))
         thetal = para[int(2**N):]
@@ -387,9 +360,16 @@ def loss_func_bound(para, samples, beta, H, N, layer_number, gate="XY",  noise=F
     else:
         phi = para[:N]
         thetal = para[N:]
-        U = get_U(thetal, layer_number, N, gate, noise)
-        #loss_samp = [logp(phi, x) + q_expect(U, x, beta, H) for x in samples]
-        loss_samp = [logp(phi, x) + q_expect_exp(U, x, beta, h, basez, basezz, noise) for x in samples]
+        if symmetry:
+            Ul = []
+            for n in range(N+1):
+                Ul.append(get_U(thetal, layer_number, N, gate, noise, qN = n))
+            loss_samp = [logp(phi, x) + q_expect(Ul, x, beta, H) for x in samples]
+
+        else:
+            U = get_U(thetal, layer_number, N, gate, noise)
+            loss_samp = [logp(phi, x) + q_expect_exp(U, x, beta, h, noise) for x in samples]
+
         if samp:
             return np.mean(loss_samp)
         else:
@@ -423,14 +403,8 @@ def grad_parashift(thetal, alpha,  samples, beta,  H, N, layer_number, gate="XY"
 
 
 
-
-
-def grad(para, samples, beta, H, N, layer_number, gate="XY", samp=False, join=False, noise=False):
+def grad(para, samples, beta, H, N, layer_number, h=0.5,  gate="XY", samp=False, join=False, noise=False):
     #phi = para[:N]
-
-    h = 0.5
-    basez = get_baseglobalz(N)
-    basezz = get_baseglobalzz(N)
 
     if join:
         ##total join prob
@@ -443,7 +417,7 @@ def grad(para, samples, beta, H, N, layer_number, gate="XY", samp=False, join=Fa
             grad_logp[i, i] = phi[i]-phi[i]**2
         
         #fx = np.log(phi) + np.array([q_expect(U, x, beta, H) for x in samples])
-        fx = np.log(phi) + np.array([q_expect_exp(U, x, beta, h, basez, basezz, noise) for x in samples])
+        fx = np.log(phi) + np.array([q_expect_exp(U, x, beta, h, noise) for x in samples])
         grad_phi = np.dot((1+fx), grad_logp)
 
 
@@ -472,7 +446,7 @@ def grad(para, samples, beta, H, N, layer_number, gate="XY", samp=False, join=Fa
             for x in samples:
                 grad_logp = (x-phi)
                 #fx = logp(phi, x) + q_expect(U, x, beta, H)
-                fx = logp(phi, x) + q_expect_exp(U, x, beta, h, basez, basezz, noise)
+                fx = logp(phi, x) + q_expect_exp(U, x, beta, h, noise)
                 grad_phil.append(fx*(grad_logp))
             grad_phi = np.dot(prob, grad_phil)
 
@@ -604,13 +578,13 @@ def optimize_adam(niter, layer_number, beta, H, N,  h, nbatch, gate="XY", lr=0.1
     samples = gen_btsl(N)
 
     for i in range(niter):
-        print("Currunt interation: %d/%d" % (i+1, niter))
+        print("Current interation: %d/%d" % (i+1, niter))
         if samp:
             samples = gen_samples(phi, nbatch[i], N)
         
-        lossf = loss_func(para, samples, beta, H, N, layer_number, gate=gate, samp=samp, join=join, noise=noise)
+        lossf = loss_func(para, samples, beta, H, N, layer_number, h = h, gate = gate, samp = samp, join = join, noise = noise)
         pid = os.getpid()
-        print("process: ", pid, "Currunt loss: ", lossf)
+        print("process: ", pid, "Current loss: ", lossf)
 
         lossfl.append(lossf)
        
@@ -643,7 +617,7 @@ def optimize_zoopt(niter, layer_number, beta, H, N, h, nbatch, gate="XY",  samp=
     samples = gen_btsl(N)
     def objfunction(solution):
         x = solution.get_x()
-        value = loss_func_bound(np.array(x), samples, beta, H, N, layer_number, gate=gate, samp=samp, join=join, noise=noise)
+        value = loss_func_bound(np.array(x), samples, beta, H, N, layer_number,h = h, gate=gate, samp=samp, join=join, noise=noise)
         return value
     
     dim_theta = layer_number*(N+1)
@@ -652,7 +626,7 @@ def optimize_zoopt(niter, layer_number, beta, H, N, h, nbatch, gate="XY",  samp=
 
     dim = N + dim_theta   # dimension
     obj = Objective(objfunction, Dimension(dim, [[0, 1]]*N + [[np.pi/2, 2*np.pi]]*(dim_theta), [True]*dim))
-    parameter = Parameter(budget=10000, uncertain_bits = 1,   exploration_rate=0.02, parallel=True, server_num=6)
+    parameter = Parameter(budget=10000, uncertain_bits = 1,  exploration_rate=0.02, parallel=True, server_num=6)
     # parameter.set_train_size(22)
     # parameter.set_positive_size(2)
     sol = Opt.min(obj, parameter)
@@ -668,7 +642,7 @@ def optimize_zoopt(niter, layer_number, beta, H, N, h, nbatch, gate="XY",  samp=
 
 def optimize_gpso(niter, layer_number, beta, H, N, h, nbatch, gate="XY",  samp=False, join=False, noise=False):
     samples = gen_btsl(N)
-    loss_func_p = partial(loss_func_bound, gate=gate, samp=samp, join=join, noise=noise)
+    loss_func_p = partial(loss_func_bound, h = h, gate=gate, samp=samp, join=join, noise=noise)
     dim_theta = layer_number*(N + 1)
     dim = N + dim_theta
 
