@@ -7,15 +7,19 @@ from util import si, sx, sy, sz
 
 def noise_rg(theta, dtheta, dphi, gate):
     if gate == "rx":
-        nx = np.sin(np.pi/2)*np.cos(dphi)
-        ny = np.sin(np.pi/2)*np.sin(dphi)
-        nz = np.cos(np.pi/2)
-        rg = expm(-1j*(theta+dtheta)/2*(nx*sx+ny*sy+nz*sz))
+        nx = np.sin(np.pi / 2) * np.cos(dphi)
+        ny = np.sin(np.pi / 2) * np.sin(dphi)
+        nz = np.cos(np.pi / 2)
+        #rg = expm(-1j*(theta+dtheta)/2*(nx*sx+ny*sy+nz*sz))
+        rg = np.cos((theta + dtheta) / 2) * si - 1j * np.sin((theta + dtheta) / 2) * (nx * sx + ny * sy + nz * sz)  
+
+
     elif gate == "ry":
-        nx = np.sin(np.pi/2)*np.cos(np.pi/2+dphi)
-        ny = np.sin(np.pi/2)*np.sin(np.pi/2+dphi)
-        nz = np.cos(np.pi/2)
-        rg = expm(-1j*(theta+dtheta)/2*(nx*sx+ny*sy+nz*sz))
+        nx = np.sin(np.pi / 2) * np.cos(np.pi / 2 + dphi)
+        ny = np.sin(np.pi / 2) * np.sin(np.pi / 2 + dphi)
+        nz = np.cos(np.pi / 2)
+        #rg = expm(-1j*(theta+dtheta)/2*(nx*sx+ny*sy+nz*sz))
+        rg = np.cos((theta + dtheta) / 2) * si - 1j * np.sin((theta + dtheta) / 2) * (nx * sx + ny * sy + nz * sz)  
     
     elif gate == "rxy":
         rg = expm(-1j*((theta+dtheta)*(np.kron(sx, sx)+np.kron(sy, sy))+dphi*np.kron(sz, si)))    
@@ -27,9 +31,9 @@ def noise_rg(theta, dtheta, dphi, gate):
 def rand_rx(theta):
     len_theta = 0.05    
     len_phi = 0.05
-    dtheta = (np.random.rand()-0.5)/0.5*len_theta
-    dphim = np.sqrt(len_phi**2 - (len_phi*dtheta)**2/len_theta**2)
-    dphi = (np.random.rand()-0.5)/0.5*dphim
+    dtheta = np.random.uniform(-len_theta, len_theta)
+    dphim = np.sqrt(len_phi ** 2 - (len_phi * dtheta) ** 2 / len_theta ** 2)
+    dphi = np.random.uniform(-dphim, dphim)
     noise_rx = noise_rg(theta, dtheta, dphi, 'rx')
 
     # ##check fidelity
@@ -42,9 +46,9 @@ def rand_rx(theta):
 def rand_ry(theta):
     len_theta = 0.05
     len_phi = 0.05
-    dtheta = (np.random.rand()-0.5)/0.5*len_theta
-    dphim = np.sqrt(len_phi**2 - (len_phi*dtheta)**2/len_theta**2)
-    dphi = (np.random.rand()-0.5)/0.5*dphim
+    dtheta = np.random.uniform(-len_theta, len_theta)
+    dphim = np.sqrt(len_phi ** 2 - (len_phi * dtheta) ** 2 / len_theta ** 2)
+    dphi = np.random.uniform(-dphim, dphim)
     noise_ry = noise_rg(theta, dtheta, dphi, 'ry')
 
     ##check fidelity
@@ -96,13 +100,23 @@ def rz(phi, noise):
         return np.array([[np.exp(-1j * phi / 2), 0],
                      [0, np.exp(1j * phi / 2)]])
 
+def qN_rz(phi, noise):
+    ''' Error rz for simulation with symmetry, dphi = 0.05 for fidelity 0.999;
+    0.1 for fidelity 0.995 '''
+
+    if noise:
+        dphi = np.random.uniform(-0.05, 0.05)
+        return np.array([[np.exp(-1j * (phi + dphi) / 2), 0],
+                        [0, np.exp(1j * (phi + dphi) / 2)]])
+    else:
+        return np.array([[np.exp(-1j * phi / 2), 0],
+                        [0, np.exp(1j * phi / 2)]])
 
 def rxy(theta, noise, dthedphi=None):
     if noise:
         return rand_xy(theta, dthedphi=dthedphi)
     else:
-        return expm(-1j*theta*(np.kron(sx, sx)+np.kron(sy, sy)))
-
+        return expm(-1j*theta*(np.kron(sx, sx) + np.kron(sy, sy)))
 
 
 

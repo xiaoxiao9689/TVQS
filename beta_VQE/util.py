@@ -157,6 +157,12 @@ def gen_btsl(N):
     btsl = [get_basis(ind, N) for ind in range(basisN)]
     return btsl
 
+def gen_btsl_sub(N, n):
+    totbasis = np.array(gen_btsl(N))
+    ind = np.random.choice(len(totbasis), size = n, replace = False)
+
+    return totbasis[ind]
+
 
 def get_sym_basis(basis):
     #return basis ind with total up spin number 0, 1, 2, 3,..., N

@@ -5,24 +5,30 @@ import matplotlib.pyplot as plt
 from functools import reduce
 from zoopt import Dimension, Objective, Parameter, Opt, Solution
 import scipydirect as direct
-
+import DIRECT
+from sko.SA import SA
 
 
 def Rastrgin(x):
+    ''' x range: [-5.12, 5.12] '''
     return np.sum(x**2 - 10*np.cos(2*np.pi*x) + 10)
 
 def Ackley(x, a = 20, b = 0.2, c =  2*np.pi):
+    ''' x range: [-32.768, 32.768] '''
     y = - a*np.exp( - b*np.sqrt(np.mean(x**2))) - np.exp(np.mean(np.cos(c*x))) + a + np.exp(1)
 
     return y 
 
 def Rosenbrock(x):
+    ''' x range: [-5, 10] or [-2.048, 2.048]'''
     return np.sum([100*(x[i+1] - x[i]**2)**2 + (x[i] - 1)**2 for i in range(len(x) - 1)])
 
 def Griewank(x):
+    '''x range: [-600, 600] ''' 
     return np.sum(x**2)/4000 - reduce(lambda x, y: x*y, np.cos(x/np.sqrt(np.arange(1, len(x)+1)))) + 1
 
 def Hartmann_6(x):
+    '''x range: [0, 1]'''
     alpha = np.array([1.0, 1.2, 3.0, 3.2]) 
 
     A = np.array([[10, 3, 17, 3.50, 1.7, 9],
@@ -146,30 +152,32 @@ def minimize(func, args = (), max_iter = 1000, dim = 0, bound = np.array([]), de
 
 if __name__ == '__main__':
     #GPSO results
-    dim = 6
-    bound = np.array([[0, 1]]*dim)
-    trajx, traj = minimize(Hartmann_6, max_iter=200, dim=dim, bound=bound, wmin = 0.5, wmax = 1.0, c3 = 0.03,  decay = True, boundary_handling = "periodic")
-    plt.plot(np.arange(len(traj))*20, traj, label = 'gpso')
-    #plt.ylim(0)
-    #plt.yscale('log')
+    dim = 10
+    bound = np.array([[-5, 10]]*dim)
+    # trajx, traj = minimize(Hartmann_6, max_iter=200, dim=dim, bound=bound, wmin = 0.5, wmax = 1.0, c3 = 0.03,  decay = True, boundary_handling = "periodic")
+    # plt.plot(np.arange(len(traj))*20, traj, label = 'gpso')
+    # #plt.ylim(0)
+    # #plt.yscale('log')
 
 
-    ##zoopt results
-    def objfunc(solution):
-        x = np.array(solution.get_x())
-        return Hartmann_6(x)
+    # ##zoopt results
+    # def objfunc(solution):
+    #     x = np.array(solution.get_x())
+    #     return Hartmann_6(x)
 
-    obj = Objective(objfunc, Dimension(dim, bound, [True]*dim))
-    sol = Opt.min(obj, Parameter(budget=4000,  exploration_rate=0.01))
-    para = np.array(sol.get_x())
-    lossfl = obj.get_history_bestsofar()
-    plt.plot(np.arange(len(lossfl)), lossfl, label = 'racos_zoopt')
-    plt.plot([0, len(lossfl)], [-3.32237, -3.32237], '--')
-    plt.legend()
-
-    ##Direct results
-    res = direct.minimize(Hartmann_6, maxf=4000, disp=True,  bounds=bound)
+    # obj = Objective(objfunc, Dimension(dim, bound, [True]*dim))
+    # sol = Opt.min(obj, Parameter(budget=4000,  exploration_rate=0.01))
+    # para = np.array(sol.get_x())
+    # lossfl = obj.get_history_bestsofar()
+    # plt.plot(np.arange(len(lossfl)), lossfl, label = 'racos_zoopt')
+    # plt.plot([0, len(lossfl)], [-3.32237, -3.32237], '--')
+    
+    #Direct results
+    res = direct.minimize(Rosenbrock, disp=True, maxf=80000, bounds=bound, algmethod=1)
     print("direct resluts", res)
+
+   
+
 
     
 
