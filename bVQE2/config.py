@@ -1,5 +1,5 @@
 ###Share the global variable
 
-N = 5
-layer_number = 7
+N = 10
+layer_number = 10
 core_number = 6

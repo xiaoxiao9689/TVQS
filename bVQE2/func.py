@@ -34,6 +34,7 @@ Totbasis = gen_btsl(N)
 
 XYlist = [arb_twoXXgate(i, i + 1, N) + arb_twoYYgate(i, i + 1, N) for i in range(N - 1)]
 XY = np.sum(XYlist,axis=0)
+ChainXY = expm(-1j * np.pi/8 * XY)
 
 g = 16 * 2 * np.pi #MHz
 T1 = 30 #us
@@ -58,9 +59,9 @@ FCXY = np.zeros((2 ** N, 2 ** N), dtype = np.complex128)
 for i in range(N - 1):
     for j in range(i + 1, N):
         FCXY += arb_twoXXgate(i, j, N)+arb_twoYYgate(i, j, N)
+UFCXY = expm(-1j * np.pi/8 * FCXY)
 
 Sqrt_ISwap = sqrt_iswap() 
-
 BasisBlock, BasisBlockInd = get_sym_basis(Totbasis)
 
 Basez = get_baseglobalz(N)
@@ -127,14 +128,14 @@ def jointprob(btsl, phi):
 
 ######variational gate########
 def sq_gate(para, noise=False):
-    return np.dot(rz(para[2], noise), np.dot(ry(para[1], noise), rz(para[0], noise)))
+    return np.dot(rz(para[2], noise=noise), np.dot(ry(para[1], noise=noise), rz(para[0], noise=noise)))
 
 
 def enhan_XYgate(para, noise=False, dthedphi=None):
-    en_XY = np.kron(rz(para[0], noise), rz(para[1], noise))
-    xy = rxy(np.pi / 8, noise, dthedphi=dthedphi)
+    en_XY = np.kron(rz(para[0], noise=noise), rz(para[1], noise=noise))
+    xy = rxy(np.pi / 8, noise=noise, dthedphi=dthedphi)
     en_XY = np.dot(xy, en_XY)
-    en_XY = np.dot(np.kron(rz(para[3], noise), si), en_XY)
+    en_XY = np.dot(np.kron(rz(para[3], noise=noise), si), en_XY)
     
     return en_XY
 
@@ -154,14 +155,14 @@ def var_iswap(theta):
 def singlelayer(para, N, singlegate, noise=False, qN=None):
     gatel = []
     if singlegate == "X":
-        gatel = [rx(para[i], noise) for i in range(N)]
+        gatel = [rx(para[i], noise=noise) for i in range(N)]
     elif singlegate == "Y":
-        gatel = [ry(para[i], noise) for i in range(N)]
+        gatel = [ry(para[i], noise=noise) for i in range(N)]
     elif singlegate == "Z":
         if qN == None:
-            gatel = [rz(para[i], noise) for i in range(N)]
+            gatel = [rz(para[i], noise=noise) for i in range(N)]
         else:
-            gatel = [qN_rz(para[i], noise) for i in range(N)]
+            gatel = [qN_rz(para[i], noise=noise) for i in range(N)]
 
     singlelayer = tensorl(gatel)
     if not (qN == None):  
@@ -180,7 +181,7 @@ def XY_layer(para, N, noise, qN = None, iswap = True, dthedphi=None):
             U = np.dot(var_iswap_i, U)
             op_list[i] = si
         else:
-            op_list[i] = rxy(para[i], noise, dthedphi=dthedphi)
+            op_list[i] = rxy(para[i], noise=noise, dthedphi=dthedphi)
             xy_i = tensorl(op_list)
             U = np.dot(xy_i, U)
             op_list[i] = si
@@ -191,31 +192,34 @@ def XY_layer_grad(para, N, noise, a, b, gi, qN=None,  dthedphi=None):
     op_list = [si for i in range(N - 1)]
     for i in range(N - 1):
         if i == gi:
-            op_list[i] = XYgate_grad(para[i], a, b, noise, dthedphi = None)
+            op_list[i] = XYgate_grad(para[i], a, b, noise=noise, dthedphi = None)
         else:
-            op_list[i] = rxy(para[i], noise, dthedphi=dthedphi)
+            op_list[i] = rxy(para[i], noise=noise, dthedphi=dthedphi)
         xy_i = tensorl(op_list)
         U = np.dot(xy_i, U)
         op_list[i] = si
     
     return U
 
-def chain_XY(theta, N, noise, qN = None):
-    xy = XY
+def chain_XY(theta, N, qN = None):
+    #xy = XY
+    chainXY = ChainXY
     if not (qN == None):
-        xy = get_block(XY, qN, BasisBlockInd)
-    
-    return expm(-1j * theta * xy)
+        #xy = get_block(XY, qN, BasisBlockInd)
+        chainXY = get_block(chainXY, qN, BasisBlockInd)
 
-def fc_XY(theta, N, noise, qN = None):
-    fcxy = FCXY
+    return chainXY
+
+def fc_XY(theta, N, qN = None):
+    #fcxy = FCXY
+    ufcxy = UFCXY
     if not (qN == None):
-        fcxy = get_block(FCXY, qN, BasisBlockInd)
+        #fcxy = get_block(FCXY, qN, BasisBlockInd)
+        ufcxy = get_block(ufcxy, qN, BasisBlockInd)
+    return  ufcxy
 
-    return  expm(-1j * theta * fcxy)
 
-
-def XYgate_grad(para, a, b, noise, dthedphi=None):
+def XYgate_grad(para, a, b, noise=False, dthedphi=None):
     # XY_grad = np.kron(rz(para[0], noise), rz(para[1], noise))
     # xy = rxy(para[2]+a, noise, dthedphi=dthedphi) 
     # XY_grad = np.dot(xy, XY_grad)
@@ -224,9 +228,9 @@ def XYgate_grad(para, a, b, noise, dthedphi=None):
     # XY_grad = np.dot(np.kron(sx, si), XY_grad)
     # XY_grad = np.dot(np.kron(rz(para[3], noise), si), XY_grad)
 
-    XY_grad = rxy(para + a, noise, dthedphi=dthedphi)
+    XY_grad = rxy(para + a, noise=False, dthedphi=dthedphi)
     XY_grad = np.dot(np.kron(sx, si), XY_grad)
-    XY_grad = np.dot(rxy(b, noise, dthedphi=dthedphi), XY_grad)
+    XY_grad = np.dot(rxy(b, noise=False, dthedphi=dthedphi), XY_grad)
     XY_grad = np.dot(np.kron(sx, si), XY_grad)
 
     return XY_grad

@@ -26,7 +26,19 @@ def noise_rg(theta, dtheta, dphi, gate):
     
     return rg
 
+def rn2(phi, theta, noise=False, len_theta=0.05, len_phi=0.05):
+    '''If noise, lentheta ,lendphi should be given. '''
+    dtheta = 0.
+    dphi = 0.
+    if noise:
+        dtheta = np.random.uniform(-len_theta, len_theta)
+        dphim = np.sqrt(len_phi**2 - (len_phi*dtheta)**2 / len_theta**2)
+        dphi = np.random.uniform(-dphim, dphim)
 
+    axis = [np.cos((phi+dphi)/2), np.sin((phi+dphi)/2), 0]
+    sigma = axis[0]*sx + axis[1]*sy + axis[2]*sz
+    Rn2 = np.cos((theta+dtheta)/2)*si - 1j*np.sin((theta+dtheta)/2)*(sigma)
+    return Rn2
 
 def rand_rx(theta):
     len_theta = 0.05    
@@ -92,13 +104,16 @@ def ry(phi, noise):
         return np.array([[np.cos(phi / 2), -np.sin(phi / 2)],
                      [np.sin(phi / 2), np.cos(phi / 2)]])
 
-def rz(phi, noise):
-    if noise:
+def rz(phi, noise=False):
+    #if noise:
         #Use rx and ry to construct rz
-        return reduce(np.dot, [rand_rx(-np.pi/2), rand_ry(phi), rand_rx(np.pi/2)])
-    else:
-        return np.array([[np.exp(-1j * phi / 2), 0],
-                     [0, np.exp(1j * phi / 2)]])
+        #Euler scheme
+        #return reduce(np.dot, [rand_rx(-np.pi/2), rand_ry(phi), rand_rx(np.pi/2)])
+        #Two-gate scheme
+    return np.dot(rn2(phi, np.pi, noise=noise), rx(np.pi, noise=noise))
+    #else:
+        #return np.array([[np.exp(-1j * phi / 2), 0],
+         #            [0, np.exp(1j * phi / 2)]])
 
 def qN_rz(phi, noise):
     ''' Error rz for simulation with symmetry, dphi = 0.05 for fidelity 0.999;

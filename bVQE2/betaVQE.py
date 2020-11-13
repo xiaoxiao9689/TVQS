@@ -10,7 +10,8 @@ from zoopt import Dimension, Objective, Parameter, Opt, Solution, ExpOpt
 from gpso import minimize
 import config
 from multiprocessing import Pool
-import scipydirect 
+import scipydirect
+import time 
 
 # class Varcircuit():
 #     def _init_(self, N, layer_number, gate="chanXY", noise=False, samp=False):
@@ -39,7 +40,7 @@ import scipydirect
 #             U = 1.0
 #             for l in range(theta.shape[0]):
 #                 Ul = singlelayer(theta[l, :N], N, "Z", noise=self.noise, qN = qN)
-#                 Ul = np.dot(chain_XY(np.pi / 8, N, noise=self.noise, qN=qN), Ul)
+#                 Ul = np.dot(chain_XY(np.pi / 8, N, qN=qN), Ul)
 #                 U = np.dot(Ul, U)
 
 #         elif gate == "fcXY":
@@ -111,26 +112,25 @@ class betaVQE():
                 Ul = 1.0
                 for i in range(theta.shape[1]):
                     oplist = [si for n in range(N - 1)] 
-                    oplist[i] = enhan_XYgate(theta[l, i, :], self.noise, dthedphi=ERROR_XY_LIST[i])
+                    oplist[i] = enhan_XYgate(theta[l, i, :], noise=self.noise, dthedphi=ERROR_XY_LIST[i])
                     tq_gateN = tensorl(oplist)
                     Ul = np.dot(tq_gateN , Ul)
                 U = np.dot(Ul, U)
         
-       
         elif self.gate == "chainXY":
             theta = thetal.reshape((self.layer_number, self.N))
             U = 1.0
             for l in range(theta.shape[0]):
                 Ul = singlelayer(theta[l, :N], N, "Z", noise=self.noise, qN = qN)
-                Ul = np.dot(chain_XY(np.pi / 8, N, noise=self.noise, qN=qN), Ul)
+                Ul = np.dot(chain_XY(np.pi / 8, N, qN=qN), Ul)
                 U = np.dot(Ul, U)
 
         elif self.gate == "fcXY":
             theta = thetal.reshape((self.layer_number, self.N))
             U = 1.0
             for l in range(theta.shape[0]):
-                Ul = singlelayer(theta[l, :N], N, "Z", self.noise, qN = qN)
-                Ul = np.dot(fc_XY(np.pi / 8, N, self.noise, qN = qN), Ul)
+                Ul = singlelayer(theta[l, :N], N, "Z", noise=self.noise, qN = qN)
+                Ul = np.dot(fc_XY(np.pi / 8, N, qN = qN), Ul)
                 U = np.dot(Ul, U)
         
         return U
@@ -162,9 +162,9 @@ class betaVQE():
         for l in range(theta.shape[0]):
             sing_layer =  singlelayer(theta[l, :N], N, "Z", self.noise)
             sing_layer = qtp.Qobj(sing_layer, dims = [[2] * N, [2] * N], shape = (2 ** N, 2 ** N), type = 'oper')
-            rho = sing_layer.dag() * rho * sing_layer
-            #tlist = [0, -np.pi / 8 / g]
-            tlist = np.linspace(0, -np.pi / 8 / g, 50)
+            rho = sing_layer * rho * sing_layer.dag()
+            tlist = [0, np.pi / 8 / g]
+            #tlist = np.linspace(0, -np.pi / 8 / g, 50)
             res = qtp.mesolve(Hxy, rho, tlist, c_ops = C_ops)
             rho = res.states[-1]
 
@@ -189,33 +189,32 @@ class betaVQE():
         psirho = qtp.ket2dm(psi)
         psirho = self.evolve_rho(psirho, thetal)
         
-        H = qtp.Qobj((self.H).H,  dims = [[2]*N, [2]*N], shape = (2**N, 2**N), type='oper', isherm=True)
-        Hexpect = np.real(np.trace(H*psirho))
-
+        # H = qtp.Qobj((self.H).H,  dims = [[2]*N, [2]*N], shape = (2**N, 2**N), type='oper', isherm=True)
+        # Hexpect = np.real(np.trace(H*psirho))
    
-        # prob = psirho.diag()
-        # #prob = generateRandomProb_s(prob, stats = 10000)
-        # ez = np.dot(prob, Basez) 
-        # ezz = np.dot(prob, Basezz) 
+        prob = psirho.diag()
+        prob = generateRandomProb_s(prob, stats = 10000)
+        ez = np.dot(prob, Basez) 
+        ezz = np.dot(prob, Basezz) 
 
-        # gry = qtp.Qobj(tensorl([ry(np.pi / 2, self.noise) for i in range(N)]), dims = [[2] * N, [2] * N], shape = (2 ** N, 2 ** N), type = 'oper', isherm = True)
-        # psirhox = gry.dag() * psirho * gry
-        # prob = psirhox.diag()
-        # #prob = generateRandomProb_s(prob, stats = 10000)
-        # exx = np.dot(prob, Basezz) 
+        gry = qtp.Qobj(tensorl([ry(np.pi / 2, noise=self.noise) for i in range(N)]), dims = [[2] * N, [2] * N], shape = (2 ** N, 2 ** N), type = 'oper', isherm = True)
+        psirhox = gry * psirho * gry.dag()
+        prob = psirhox.diag()
+        prob = generateRandomProb_s(prob, stats = 10000)
+        exx = np.dot(prob, Basezz) 
 
-        # grx = qtp.Qobj(tensorl([rx(np.pi / 2, self.noise) for i in range(N)]), dims = [[2] * N, [2] * N], shape = (2 ** N, 2 ** N), type = 'oper', isherm = True)
-        # psirhoy = grx.dag() * psirho * grx
-        # prob = psirhoy.diag()
-        # #prob = generateRandomProb_s(prob, stats = 10000)
-        # eyy = np.dot(prob, Basezz) 
+        grx = qtp.Qobj(tensorl([rx(np.pi / 2, noise=self.noise) for i in range(N)]), dims = [[2] * N, [2] * N], shape = (2 ** N, 2 ** N), type = 'oper', isherm = True)
+        psirhoy = grx * psirho * grx.dag()
+        prob = psirhoy.diag()
+        prob = generateRandomProb_s(prob, stats = 10000)
+        eyy = np.dot(prob, Basezz) 
 
-        # if self.Htype == "XY":
-        #     Hexpect = self.h*ez + exx + eyy
-        # elif self.Htype == "XXZ":
-        #     Hexpect = self.h*ezz + exx + eyy
+        if self.Htype == "XY":
+            Hexpect = self.h*ez + exx + eyy
+        elif self.Htype == "XXZ":
+            Hexpect = self.h*ezz + exx + eyy
 
-        return  Hexpect
+        return  np.real(Hexpect)
 
     def q_expect(self, x, U):
         if self.noise:
@@ -228,12 +227,12 @@ class betaVQE():
             ez = np.dot(prob, Basez)
             ezz = np.dot(prob, Basezz) 
 
-            psix = np.dot(tensorl([ry(np.pi / 2, self.noise) for i in range(self.N)]), psi)
+            psix = np.dot(tensorl([ry(np.pi / 2, noise=self.noise) for i in range(self.N)]), psi)
             prob = np.abs(psix) ** 2
             prob = generateRandomProb_s(prob, stats = 10000)
             exx = np.dot(prob, Basezz) 
 
-            psiy = np.dot(tensorl([rx(np.pi / 2, self.noise) for i in range(self.N)]), psi)
+            psiy = np.dot(tensorl([rx(np.pi / 2, noise=self.noise) for i in range(self.N)]), psi)
             prob = np.abs(psiy) ** 2
             prob = generateRandomProb_s(prob, stats = 10000)
             eyy = np.dot(prob, Basezz) 
@@ -283,6 +282,7 @@ class betaVQE():
             else:
                 E_x = np.array([self.q_expect(x, U) for x in samples])
         
+        print("len(ex)", len(E_x))
         return E_x
         
 
@@ -342,6 +342,7 @@ class betaVQE():
                 return np.dot(phi, loss_samp)
 
             else:
+                print(len(samples))
                 phi = para[:self.N] if bound else 1 / (1 + np.exp(-para[:self.N]))
                 thetal = para[self.N:]
                 E_x = self.get_Ex(thetal, samples)
@@ -420,7 +421,7 @@ class betaVQE():
             grad_phil = []
             for x in samples:
                 grad_logp = (x - phi)
-                if self.symmetry:
+                if self.symmetry: 
                     fx = logp(phi, x) + self.beta*self.q_expects(x, Ul)
                 else:
                     fx = logp(phi, x) + self.beta*self.q_expect(x, U) 
@@ -569,7 +570,7 @@ class betaVQE():
                 self.opt(ti)
                     
 
-    def cal_obs(self, x, bound=False):
+    def cal_obs(self, x, bound=False, samp_num=1000):
         samples = self.var_basis
         if self.join:
             alpha = x[:len(self.var_basis)]
@@ -584,11 +585,12 @@ class betaVQE():
             phi = 1 / (1+np.exp(-alpha))
 
         if self.samp:
-            samples=  gen_samples(phi, 1000, self.N)
+            samples=  gen_samples(phi, samp_num, self.N)
         
         if self.peierls:
             theta = x
 
+        print(len(samples))
         F = self.loss_func(x, samples, bound=bound) / self.beta
         E = self.loss_quantum(theta, alpha, samples, bound=bound)
 
@@ -601,39 +603,64 @@ if __name__ == "__main__":
     beta = 0.2
     h = 0.5
     layer_number = config.layer_number
-    trialnum = 4
-    #bVQE = betaVQE(N, beta, h, layer_number, optimizer="adam", samp=False, decoherence=True, parallel=False)
-    #bVQE.learn(trialnum=trialnum, parallel_trial=False)
+    trialnum = 1
+
+    #---------------Optimize-------------------
+    # bVQE = betaVQE(N, beta, h, layer_number, optimizer="adam", noise=False, samp=True, nbatch=50)
+    # bVQE.learn(trialnum=trialnum, parallel_trial=False)
     # F = exact(bVQE.beta, (bVQE.H).H)[0]
 
+    # ##-------------Observables calculation---------------
+    bVQE = betaVQE(N, beta, h, layer_number, optimizer="adam", samp=True, symmetry=False, nbatch=50)
 
-    bVQE = betaVQE(N, beta, h, layer_number, optimizer="adam", samp=False,  parallel=False)
-    tag = bVQE.create_tag()
-    tag_sol = "data/" + "sol_" + tag + "_ti" + str(2) + ".npy"
-    sol = np.load(tag_sol)
-    theta = sol[N:]
+    #Optimized parameter
+    # tag = bVQE.create_tag()
+    # tag_sol = "data/" + "sol_" + tag + "_ti" + str(0) + ".npy"
+    # sol = np.load(tag_sol)
+    # theta = sol[N:]
+    # samples = gen_btsl(N)
+
+    ##test parameter
+    phi = [1/N]*N
+    theta = 2*np.pi*np.random.rand(N*layer_number)
+    sol = np.concatenate((phi, theta))
     samples = gen_btsl(N)
-    print("------------Decoherence optimized results-------")
-    bVQE.decoherence = True
-    F, E = bVQE.cal_obs(sol)
-    E_x = bVQE.get_Ex(theta, samples)
-    print(np.sort(E_x))
-    print("F: ", F, " ", "E: ", E)
+    # # print("------------Decoherence optimized results-------")
+    # bVQE.decoherence = True
+    # F, E = bVQE.cal_obs(sol)
+    # start = time.time()
+    # E_x = bVQE.get_Ex(theta, samples)
+    # end = time.time()
+    # print("times: ", end - start, "s")
+    # print(np.sort(E_x))
+    # print("F: ", F, " ", "E: ", E)
 
-    print("------------No Decoherence optimized results-------")
+    #print("------------No Decoherence optimized results-------")
     bVQE.decoherence = False
-    F, E = bVQE.cal_obs(sol)
-    E_x = bVQE.get_Ex(theta, samples)
-    print(np.sort(E_x))
-    print("F: ", F, " ", "E: ", E)
-    
-    print("------------Exact results--------------------")
-    H = (bVQE.H).H
-    F_exact = exact(beta, H)[0]
-    E_exact = exact(beta, H)[1]
-    print(np.linalg.eigvalsh(H))
-    print("F_exact: ", F_exact, ' ', "E_exact: ", E_exact)
+    start = time.time()
+    F, E = bVQE.cal_obs(sol, samp_num=1000)
+    end = time.time()
+    print("times: ", end - start, "s")
 
+    # bVQE.symmetry = True
+    # start = time.time()
+    # F, E = bVQE.cal_obs(sol, samp_num=1)
+    # end = time.time()
+    # print("times: ", end - start, "s")
+
+    #E_x = bVQE.get_Ex(theta, samples)
+    #print(np.sort(E_x))
+    print("F: ", F, " ", "E: ", E)
+        # print("------------Exact results--------------------")
+    # H = (bVQE.H).H
+    # F_exact = exact(beta, H)[0]
+    # E_exact = exact(beta, H)[1]
+    # print(np.linalg.eigvalsh(H))
+    # print("F_exact: ", F_exact, ' ', "E_exact: ", E_exact)
+
+
+    # #----------------Plot results---------------------
+    # tag = bVQE.create_tag()
     # fig, ax = plt.subplots()
     # for ti in range(trialnum):
     #     tagi = "data/" + tag + "_ti" + str(ti)
