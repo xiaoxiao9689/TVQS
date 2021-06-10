@@ -772,9 +772,12 @@ class betaVQE():
         F = self.loss_func(x, samples, bound=bound, Ex=Ex) / self.beta
         E = self.loss_quantum(theta, alpha, samples, bound=bound,Ex=Ex)
         
-        prob = jointprob(self.var_basis, phi)
-        logpx = np.array([logp(phi, x) for x in self.var_basis])
-        S = -1.*np.dot(prob, logpx)
+        #prob = jointprob(self.var_basis, phi)
+        #logpx = np.array([logp(phi, x) for x in self.var_basis])
+        #S = -1.*np.dot(prob, logpx)
+        
+        #marginal
+        S = -np.sum(phi * np.log(phi) + (1-phi) * np.log(1-phi))
         if thermE:
             E = F + S/self.beta
 
